@@ -20,7 +20,7 @@ local module_host = module:get_host();
 -- Manage cache
 local CACHE_EXPIRY = 300;
 local gettime = require 'socket'.gettime;
-local last_fetch_time;
+local last_fetch_time = 0;
 
 function groups_update()
   local ld		= ldap.getconnection();
@@ -36,35 +36,24 @@ function groups_update()
 
   groups = { default = {} };
   members = {};
+  members[false] = {};
 
   module:log("debug", "Updating groups cache");
   for _, config in ipairs(params.groups) do
     module:log("debug", "New group: %s with name: %s", tostring(config[gnamefield]), tostring(config.name));
     groups[ config.name ] = {};
 
-    if not members[false] then
-      members[false] = {};
+    if config.public then
+      members[false][#members[false]+1] = config.name;
     end
-    members[false][#members[false]+1] = config.name;
 
     module:log("debug", "Adding users to group");
     local gfilter = "(&(objectClass=group)(CN=" .. config[gnamefield] .. "))";
     module:log("debug", "Getting group data: attrs=%s, base=%s, filter=%s", gmemberfield, gbasedn, gfilter);
-    for a, members in ld:search { attrs = { gmemberfield }, base = gbasedn, scope = 'subtree', filter = gfilter } do
+    for a, gmembers in ld:search { attrs = { gmemberfield }, base = gbasedn, scope = 'subtree', filter = gfilter } do
       if members then
-        for _, member in pairs(members[gmemberfield]) do
+        for _, member in pairs(gmembers[gmemberfield]) do
           module:log("debug", "Processing member %s", member);
-	  -- Format:
-	  --   User inside OU:
-	  --    CN=User Name,OU=Users,DC=domain,DC=test
-	  --   User on domain root:
-	  --    CN=User Name,DC=domain,DC=test
-	  -- We need the CN to get the user data and to name it on roster.
-	  -- Also we need the rest of the DN to avoid problems if there are two 
-	  -- users with the same name (different username) in different OU,
-	  -- for example:
-	  --   CN=Test User,OU=Users,DC=domain,DC=com as test@domain.com
-	  --   CN=Test User,OU=Other_Users,DC=domain,DC=com as test2@domain.com
 	  local cut = member:find(',OU') or member:find(',DC');
           local usercn = member:sub(4, cut - 1);
           local userdn = member:sub(cut + 1, -1);
@@ -75,10 +64,6 @@ function groups_update()
             local jid = jid_prep( userdata[uusernamefield] .. "@" .. module.host );
             if jid then
               groups[config.name][jid] = usercn or false;
-              if not members[false] then
-                members[false] = {};
-              end
-              members[false][#members[false]+1] = config.name;
               module.log("debug", "User added");
             else
               module.log("diebug", "User has no jid");
@@ -126,18 +111,21 @@ function inject_roster_contacts(event)
   end
 
   -- Find groups this JID is a member of
-  if members[bare_jid] then
-    for _, group_name in ipairs(members[bare_jid]) do
-      module:log("debug", "Importing group %s", group_name);
-      import_jids_to_roster(group_name);
+  for group in pairs(groups) do
+    module:log("debug", "Checking if user exists on group %s", group);
+    if groups[group][bare_jid] ~= nil then
+      module:log("debug", "Importing group %s as member", group);
+      import_jids_to_roster(group);
+    else
+      module:log("debug", "User is not in group", group);
     end
   end
 
   -- Import public groups
-  module:log("debug", "members[false]: %s", members[false]);
+  module:log("debug", "members[false]: %s", table.concat(members[false], ', '));
   if members[false] then
     for _, group_name in ipairs(members[false]) do
-      module:log("debug", "Importing group %s", group_name);
+      module:log("debug", "Importing public group %s", group_name);
       import_jids_to_roster(group_name);
     end
   end
@@ -189,3 +177,4 @@ end
 function group_contains(group_name, jid)
   return groups[group_name][jid];
 end
+
