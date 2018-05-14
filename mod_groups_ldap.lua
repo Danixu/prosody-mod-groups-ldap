@@ -6,6 +6,7 @@
 -- COPYING file in the source package for more information.
 --
 -- Modded to use LDAP groups by Danixu86
+-- Requires prosody 0.9+
 
 
 local groups;
@@ -54,9 +55,8 @@ function groups_update()
       if members then
         for _, member in pairs(gmembers[gmemberfield]) do
           module:log("debug", "Processing member %s", member);
-	  local cut = member:find(',OU') or member:find(',DC');
-          local usercn = member:sub(4, cut - 1);
-          local userdn = member:sub(cut + 1, -1);
+          local usercn = member:match("[Cc][Nn]=(.-),[OoDd][UuCc]");
+          local userdn = member:match("[Cc][Nn]=.-,([OoDd][UuCc].*)");
           module:log("debug", "Getting user info from LDAP: base=%s, filter=%s", userdn, "(&" .. gufilter .. "(CN=" .. usercn .. "))");
           local _, userdata = ld:search { attrs = { uusernamefield }, base = userdn, scope = 'subtree', filter = "(&" .. gufilter .. "(CN=" .. usercn .. "))" }();
           if userdata and userdata[uusernamefield] then
@@ -158,7 +158,7 @@ end
 
 function module.load()
   module:log("debug", "Loading groups_ldap module");
-  params = module:get_option('ldap');
+  params = module:context(module_host):get_option('ldap');
   if not params then return; end
 
   module:log("debug", "Adding rooster-load hook");
@@ -177,4 +177,3 @@ end
 function group_contains(group_name, jid)
   return groups[group_name][jid];
 end
-
