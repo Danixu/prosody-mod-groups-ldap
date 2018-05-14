@@ -37,7 +37,7 @@ local gbasedn		= params.groups.basedn
 local gmemberfield	= params.groups.memberfield;
 local gnamefield	= params.groups.namefield;
 local gufilter		= params.groups.userfilter or '(!(userAccountControl:1.2.840.113556.1.4.803:=2))';
-local ggfilter		= params.groups.groupfilter or '';
+local ggfilter		= params.groups.groupfilter;
 -- Users vars
 local uusernamefield	= params.user.usernamefield
 local unamefield	= params.user.namefield
