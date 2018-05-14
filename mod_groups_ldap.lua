@@ -30,6 +30,7 @@ function groups_update()
   local gmemberfield	= params.groups.memberfield;
   local gnamefield	= params.groups.namefield;
   local gufilter	= params.groups.userfilter or '(!(userAccountControl:1.2.840.113556.1.4.803:=2))';
+  local ggfilter	= params.groups.groupfilter or '';
   -- Users vars
   local ubasedn		= params.user.basedn
   local uusernamefield	= params.user.usernamefield
@@ -49,7 +50,7 @@ function groups_update()
     end
 
     module:log("debug", "Adding users to group");
-    local gfilter = "(&(objectClass=group)(CN=" .. config[gnamefield] .. "))";
+    local gfilter = ldap.filter.combine_and("CN=" .. config[gnamefield], ggfilter);
     module:log("debug", "Getting group data: attrs=%s, base=%s, filter=%s", gmemberfield, gbasedn, gfilter);
     for a, gmembers in ld:search { attrs = { gmemberfield }, base = gbasedn, scope = 'subtree', filter = gfilter } do
       if members then
@@ -58,7 +59,7 @@ function groups_update()
           local usercn = member:match("[Cc][Nn]=(.-),[OoDd][UuCc]");
           local userdn = member:match("[Cc][Nn]=.-,([OoDd][UuCc].*)");
           module:log("debug", "Getting user info from LDAP: base=%s, filter=%s", userdn, "(&" .. gufilter .. "(CN=" .. usercn .. "))");
-          local _, userdata = ld:search { attrs = { uusernamefield }, base = userdn, scope = 'subtree', filter = "(&" .. gufilter .. "(CN=" .. usercn .. "))" }();
+          local _, userdata = ld:search { attrs = { uusernamefield }, base = userdn, scope = 'subtree', filter = ldap.filter.combine_and("(CN=" .. usercn .. ")", gufilter) }();
           if userdata and userdata[uusernamefield] then
             module:log("debug", "Adding user %s to group %s", userdata[uusernamefield], config.name);
             local jid = jid_prep( userdata[uusernamefield] .. "@" .. module.host );
@@ -158,7 +159,9 @@ end
 
 function module.load()
   module:log("debug", "Loading groups_ldap module");
+--  params = module:get_option('ldap');
   params = module:context(module_host):get_option('ldap');
+  --params = module:context(module_host):get_option('ldap', module:get_option('ldap'));
   if not params then return; end
 
   module:log("debug", "Adding rooster-load hook");
